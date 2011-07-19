@@ -20,6 +20,7 @@
 @Grab(group='commons-io', module='commons-io', version='2.0.1')
 @Grab(group='net.java.dev.jets3t', module='jets3t', version='0.8.1')
 
+import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang.*;
 import org.apache.commons.io.*;
 import groovy.json.*;
@@ -49,8 +50,34 @@ final def s3ToJson(jsonSlurper, s3Obj) {
     }
 }
 
-def scriptDir = new File(getClass().protectionDomain.codeSource.location.path).parent;
-def config = jsonSlurper.parseText(new File(scriptDir, "config.json").getText(encoding));
+final def scriptDir = new File(getClass().protectionDomain.codeSource.location.path).parent;
+final def config = jsonSlurper.parseText(new File(scriptDir, "config.json").getText(encoding));
+
+//Load update status file
+final def statusFile = new File(scriptDir, config.statusFile);
+final def statusData;
+if (statusFile.exists()) {
+    statusData = jsonSlurper.parseText(statusFile.getText(encoding));
+}
+else {
+    statusData = [:];
+}
+
+//Check if enough time has passed such that we should do an update
+if (statusData.lastUpdated != null) {
+    def updateInterval = TimeUnit.MINUTES.toMillis(config.updateInterval);
+    def now = System.currentTimeMillis();
+    if ((statusData.lastUpdated + updateInterval) > now) {
+        logger.info("It has only been " + TimeUnit.MILLISECONDS.toMinutes(now - statusData.lastUpdated) + " minutes since the last update, updates only done every " + config.updateInterval + " minutes, returning.");
+        return;
+    }
+    else {
+        logger.info("It has been " + TimeUnit.MILLISECONDS.toMinutes(now - statusData.lastUpdated) + " minutes since the last update, updating now.");
+    }
+}
+else {
+    logger.info("First Update");
+}
 
 //Create a Calendar that corresponds to the Sunday of this week
 def cal = Calendar.getInstance();
@@ -225,3 +252,7 @@ if (historyModified) {
     logger.info("Saved history in S3");
     logger.debug(history.toString());
 }    
+
+//Save the status file
+statusData.lastUpdated = System.currentTimeMillis();
+statusFile.write(JsonOutput.prettyPrint(JsonOutput.toJson(statusData)), encoding);

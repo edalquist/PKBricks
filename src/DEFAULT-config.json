@@ -1,4 +1,6 @@
 {
+    "statusFile": "status",
+    "updateInterval": 23,
     "PK": {
         "username": "",
         "password": ""
