@@ -1,0 +1,16 @@
+{
+  "groups": {
+    "01-10" : {},
+    "11-20" : {},
+    "21-30" : {},
+    "31-35" : {},
+    "abstain" : {}
+  },
+  "playerGroupLookup":   {
+    "TnGoat": "abstain",
+    "Trace.0ª": "abstain",
+    "Trev85": "abstain",
+    "O'hmar": "abstain",
+    "soartoe": "abstain"
+  }
+}

@@ -1,0 +1,90 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Kingdom Brick Count</title>
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.js"></script>
+</head>
+<body>
+<script type="text/javascript">
+$.getJSON('history.json', function(historyData) {
+	var sortMap = function(data, sortFunc) {
+		var sortable = [];
+		for (var key in data) {
+		    sortable.push([key, data[key]]);
+		}
+		sortable.sort(sortFunc);
+		return sortable;
+	};
+	
+	var mostRecentDate = 0;
+	var mostRecentFile = "";
+	$.each(historyData, function(key, val) {
+	    key = parseInt(key);
+	    if (key > mostRecentDate) {
+	    	mostRecentDate = key;
+	    	mostRecentFile = val;
+	    }
+    });
+	
+	var weekOfDate = new Date(mostRecentDate);
+	$("span#weekOfDate").text(weekOfDate.toLocaleDateString());
+	
+	$.getJSON(mostRecentFile, function(brickData) {
+		$("span#lastUpdated").text(new Date(brickData.lastUpdated).toLocaleString());
+		
+		var totalEarned = 0;
+		var totalSpent = 0;
+		
+		//create root list of groups
+		var groupList = $('<ul/>', { 'id': 'groupList' });
+
+		//Sort the group data and iterate over it
+		var sortedGroups = sortMap(brickData["groups"]);
+		$.each(sortedGroups, function(groupsIdx, groupsEntry) {
+			var groupName = groupsEntry[0];
+			var members = groupsEntry[1];
+
+			//create group entry and child member list
+			var group = $('<li/>', { 'id': 'group-' + groupName, html: groupName });
+			var memberList = $('<ul/>', { 'id': 'memberList-' + groupName });
+
+			//Sort members by bricks earned
+			var sortedMembers = sortMap(members, function(a, b) { return b[1].earned - a[1].earned });
+			$.each(sortedMembers, function(membersIdx, memberEntry) {
+				//Add each member to the member list
+				memberList.append("<li>" + memberEntry[1].earned + " - " + memberEntry[0] + "</li>");
+				
+				totalEarned += memberEntry[1].earned;
+				totalSpent += memberEntry[1].spent;
+			});
+				
+			//Add the member list to the group and the group to the group list
+			group.append(memberList);
+			groupList.append(group);
+		});
+		
+		//Add the group list to the page
+		groupList.appendTo('#brickStandings');
+		
+		$("#totalEarned").text(totalEarned);
+		$("#totalSpent").text(totalSpent);
+	});
+
+});
+</script>
+<h3>Brick Standings for the week of: <span id="weekOfDate"></span></h3>
+<div id="brickStandings"></div>
+<table>
+  <tr>
+    <th align="right">Total Earned:</th>
+    <td id="totalEarned"></td>
+  </tr>
+  <tr>
+    <th align="right">Total Spent:</th>
+    <td id="totalSpent"></td>
+  </tr>
+</table>
+<h5>Last Updated: <span id="lastUpdated"></span></h5>
+</body>
+</html>
