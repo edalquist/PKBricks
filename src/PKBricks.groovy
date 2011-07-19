@@ -84,7 +84,7 @@ else if (statusData.lastUpdated != null) {
     def updateInterval = TimeUnit.MINUTES.toMillis(config.updateInterval);
     def now = System.currentTimeMillis();
     if ((statusData.lastUpdated + updateInterval) >= now) {
-        logger.info("It has only been " + TimeUnit.MILLISECONDS.toMinutes(now - statusData.lastUpdated) + " minutes since the last update, updates only done every " + config.updateInterval + " minutes, returning.");
+        logger.debug("It has only been " + TimeUnit.MILLISECONDS.toMinutes(now - statusData.lastUpdated) + " minutes since the last update, updates only done every " + config.updateInterval + " minutes, returning.");
         return;
     }
     else {
