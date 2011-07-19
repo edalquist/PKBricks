@@ -63,11 +63,27 @@ else {
     statusData = [:];
 }
 
+def cli = new CliBuilder(usage: 'PKBricks.groovy -[f]')
+// Create the list of options.
+cli.with {
+    h longOpt: 'help', 'Show usage information'
+    f longOpt: 'force-update', 'Force update, ignoring status file'
+}
+
+def options = cli.parse(args)
+if (!options || options.h) {
+    cli.usage();
+    return;
+}
+
 //Check if enough time has passed such that we should do an update
-if (statusData.lastUpdated != null) {
+if (options.f) {
+    logger.info("Forced Update");
+}
+else if (statusData.lastUpdated != null) {
     def updateInterval = TimeUnit.MINUTES.toMillis(config.updateInterval);
     def now = System.currentTimeMillis();
-    if ((statusData.lastUpdated + updateInterval) > now) {
+    if ((statusData.lastUpdated + updateInterval) >= now) {
         logger.info("It has only been " + TimeUnit.MILLISECONDS.toMinutes(now - statusData.lastUpdated) + " minutes since the last update, updates only done every " + config.updateInterval + " minutes, returning.");
         return;
     }
