@@ -2,7 +2,10 @@
     "PK": {
         "username": "",
         "password": ""
-    }
+    },
     "S3": {
+        "accessKey": "",
+        "secretKey": "",
+        "bucketName": ""
     }
 }

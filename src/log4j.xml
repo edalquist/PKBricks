@@ -28,6 +28,9 @@
     <category name="org.apache.http.wire">
         <priority value="INFO" />
     </category>
+    <category name="org.jets3t.service">
+        <priority value="DEBUG" />
+    </category>
     
     <root>
         <priority value="INFO" />
