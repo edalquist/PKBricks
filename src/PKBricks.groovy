@@ -15,13 +15,23 @@ import static groovyx.net.http.ContentType.URLENC
 import org.jets3t.service.impl.rest.httpclient.RestS3Service
 import org.jets3t.service.security.AWSCredentials
 import org.jets3t.service.model.*
+import org.apache.log4j.*
 
+final def logger = LogManager.getLogger("PKBricks");
 final def historyFileName = "history.json";
 final def brickStatusDefaultsFileName = "brickStatusDefaults.json";
 final def encoding = "UTF-8";
+final def jsonSlurper = new JsonSlurper();
 
-//Create a JSON parser
-def jsonSlurper = new JsonSlurper();
+final def s3ToJson(jsonSlurper, s3Obj) {
+    def s3Stream = s3Obj.getDataInputStream();
+    try {
+        return jsonSlurper.parse(new InputStreamReader(s3Stream, s3Obj.contentEncoding));
+    }
+    finally {
+        IOUtils.closeQuietly(s3Stream);
+    }
+}
 
 def scriptDir = new File(getClass().protectionDomain.codeSource.location.path).parent;
 def config = jsonSlurper.parseText(new File(scriptDir, "config.json").getText(encoding));
@@ -35,54 +45,49 @@ cal.set(Calendar.MILLISECOND, 0);
 cal.add(Calendar.DAY_OF_YEAR, -1 * Math.max(0, cal.get(Calendar.DAY_OF_WEEK) - 1));
 def brickTimeStamp = cal.getTimeInMillis().toString();
 
-//Setup temp dir for json manipulation
-def dataFolder = File.createTempFile("PKBricks.", ".registry");
-dataFolder.delete();
-dataFolder.mkdir();
-
-
 def awsLogin = new AWSCredentials( config.S3.accessKey, config.S3.secretKey )
 def s3 = new RestS3Service( awsLogin )
 
-def historyFile = new File(dataFolder, historyFileName);
-
+//Load the history file from S3
+def historyModified = false;
+final def history;
 if (s3.isObjectInBucket(config.S3.bucketName, historyFileName)) {
     def historyS3Obj = s3.getObject(config.S3.bucketName, historyFileName);
-    historyS3Stream = historyS3Obj.getDataInputStream();
-    historyFileStream = new FileOutputStream(historyFile);
-    IOUtils.copy(historyS3Obj.getDataInputStream(), historyFileStream);
-    IOUtils.closeQuietly(historyS3Stream);
-    IOUtils.closeQuietly(historyFileStream);
-}
-
-def brickDefaultsFile = new File(scriptDir, brickStatusDefaultsFileName);
-
-def history;
-if (historyFile.exists()) {
-    history = jsonSlurper.parseText(historyFile.getText(encoding));
+    history = s3ToJson(jsonSlurper, historyS3Obj);
+    logger.info("Loaded history from S3")
 }
 else {
+    historyModified = true;
     history = [:];
+    logger.info("Created new history");
 }
+logger.debug(history.toString());
 
+//Determine the file name for this weeks brick data
 def brickDataFilename = history[brickTimeStamp];
-def brickDataFile;
-def brickData;
 if (brickDataFilename == null) {
-    brickDataFilename = "brickStatus_" + 
-        cal.get(Calendar.YEAR) + 
-        StringUtils.leftPad(String.valueOf(cal.get(Calendar.MONTH) + 1), 2, '0') + 
+    brickDataFilename = "brickStatus_" +
+        cal.get(Calendar.YEAR) +
+        StringUtils.leftPad(String.valueOf(cal.get(Calendar.MONTH) + 1), 2, '0') +
         cal.get(Calendar.DAY_OF_MONTH) + ".json";
 
-    brickDataFile = new File(dataFolder, brickDataFilename);
-    println "No existing brick data in history for " + brickTimeStamp + ". Using: " + brickDefaultsFile;
-    brickData = jsonSlurper.parseText(brickDefaultsFile.getText(encoding));
     history[brickTimeStamp] = brickDataFilename;
+    historyModified = true;
+}
+
+//Load this weeks brick data from S3
+final def brickData;
+if (s3.isObjectInBucket(config.S3.bucketName, brickDataFilename)) {
+    def brickDataS3Obj = s3.getObject(config.S3.bucketName, brickDataFilename);
+    brickData = s3ToJson(jsonSlurper, brickDataS3Obj);
+    logger.info("Loaded brick data from S3 for: " + brickDataFilename);
 }
 else {
-    brickDataFile = new File(dataFolder, brickDataFilename);
-    brickData = jsonSlurper.parseText(brickDataFile.getText(encoding));
+    def brickDefaultsFile = new File(scriptDir, brickStatusDefaultsFileName);
+    brickData = jsonSlurper.parseText(brickDefaultsFile.getText(encoding));
+    logger.info("Using default brick data for: " + brickDataFilename);
 }
+logger.debug(brickData.toString());
 
 //Parse out levels to point to group names
 def brickGroups = [:];
@@ -135,10 +140,11 @@ def memberTable = kdProfile.depthFirst().grep({ "table".equalsIgnoreCase(it.name
 
 //Read each row of table
 def rowCount = 0;
+def newUserCount = 0;
 memberTable.depthFirst().grep({"tr".equalsIgnoreCase(it.name())}).each {
+    rowCount++;
     //Skip header rows (not sure why we find two ...) 
-    if (rowCount < 2) {
-        rowCount++;
+    if (rowCount <= 2) {
         return;
     }
     
@@ -149,12 +155,13 @@ memberTable.depthFirst().grep({"tr".equalsIgnoreCase(it.name())}).each {
     def brickEarned = Integer.parseInt(cells[4].text().trim());
     def brickSpent = Integer.parseInt(cells[5].text().trim());
 
-    println playerName + ", " + brickEarned + ", " + brickSpent;
+    logger.debug(playerName + ", " + brickEarned + ", " + brickSpent);
     
     //See if the player exists in the data file, if not we need to look up their level
     def playerGroup = brickData.playerGroupLookup[playerName];
     def playerLevel;
     if (playerGroup == null || brickData.groups[playerGroup][playerName] == null) {
+        newUserCount++;
         def profileUrl = firstCell['@href'].text();
         def profilePage = http.get(uri : 'http://www.parallelkingdom.com/' + profileUrl);
         def profileLevel = profilePage.depthFirst().grep({ "span".equalsIgnoreCase(it.name()) && it.@id == "MainContent_ProfileBody_character_level"})[0];
@@ -164,7 +171,7 @@ memberTable.depthFirst().grep({"tr".equalsIgnoreCase(it.name())}).each {
             playerGroup = brickGroups[playerLevel];
             brickData.playerGroupLookup[playerName] = playerGroup;
         }
-        println playerName + ", " + playerLevel + " in group " + playerGroup;
+        logger.debug(playerName + ", " + playerLevel + " in group " + playerGroup);
     }
     else {
         playerLevel = brickData.groups[playerGroup][playerName].level;
@@ -177,24 +184,28 @@ memberTable.depthFirst().grep({"tr".equalsIgnoreCase(it.name())}).each {
         spent: brickSpent];
 };
 
-brickDataFile.write(JsonOutput.prettyPrint(JsonOutput.toJson(brickData)), encoding);
+logger.info("Parsed " + (rowCount - 2) + " players including " + newUserCount + " new players");
 
-println "HISTORY FILE";
-println JsonOutput.prettyPrint(JsonOutput.toJson(history));
-historyFile.write(JsonOutput.prettyPrint(JsonOutput.toJson(history)), encoding);
+//Save the brick data file to S3
+def brickDataBytes = JsonOutput.prettyPrint(JsonOutput.toJson(brickData)).getBytes(encoding);
+def brickDataS3Obj = new StorageObject(brickDataFilename);
+brickDataS3Obj.dataInputStream = new ByteArrayInputStream(brickDataBytes);
+brickDataS3Obj.contentType = "applicaton/json";
+brickDataS3Obj.contentEncoding = encoding;
+brickDataS3Obj.contentLength = brickDataBytes.length;
+s3.putObject(config.S3.bucketName, brickDataS3Obj);
+logger.info("Saved brickData in S3: " + brickDataFilename);
+logger.debug(brickData.toString());
 
-def historyS3Obj = new StorageObject(historyFile);
-historyS3Obj.key = historyFileName;
-historyS3Obj.contentType = "applicaton/json";
-historyS3Obj.contentEncoding = encoding;
-
-s3.putObject(config.S3.bucketName, historyS3Obj);
-
-
-dataFolder.deleteDir();
-
-/*
-write out json
-upload to s3
-update registry json from s3
-*/
+//Save the history file to S3
+if (historyModified) {
+    def historyBytes = JsonOutput.prettyPrint(JsonOutput.toJson(history)).getBytes(encoding);
+    def historyS3Obj = new StorageObject(historyFileName);
+    historyS3Obj.dataInputStream = new ByteArrayInputStream(historyBytes);
+    historyS3Obj.contentType = "applicaton/json";
+    historyS3Obj.contentEncoding = encoding;
+    historyS3Obj.contentLength = historyBytes.length;
+    s3.putObject(config.S3.bucketName, historyS3Obj);
+    logger.info("Saved history in S3");
+    logger.debug(history.toString());
+}    

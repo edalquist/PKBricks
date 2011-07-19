@@ -3,7 +3,7 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <title>Kingdom Brick Count</title>
-<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.js"></script>
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.min.js"></script>
 </head>
 <body>
 <script type="text/javascript">
@@ -67,14 +67,20 @@ $.getJSON('history.json', function(historyData) {
 		//Add the group list to the page
 		groupList.appendTo('#brickStandings');
 		
+		//Update the totals
 		$("#totalEarned").text(totalEarned);
 		$("#totalSpent").text(totalSpent);
+		
+		//Remove the loading image
+		$('#loading').remove();
 	});
 
 });
 </script>
 <h3>Brick Standings for the week of: <span id="weekOfDate"></span></h3>
-<div id="brickStandings"></div>
+<div id="brickStandings">
+    <div id="loading"><img src="ajax-loader.gif" alt="Loading"/> Loading...</div>
+</div>
 <table>
   <tr>
     <th align="right">Total Earned:</th>
