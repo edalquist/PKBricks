@@ -243,27 +243,29 @@ memberTable.depthFirst().grep({"tr".equalsIgnoreCase(it.name())}).each {
         spent: brickSpent];
 };
 
+def versioningStatus = s3.getBucketVersioningStatus(config.S3.bucketName);
+if (!versioningStatus.versioningEnabled) {
+    logger.warn("Bucket versioning not enabled, enabling now");
+    s3.enableBucketVersioning(config.S3.bucketName);
+}
+
 logger.info("Parsed " + (rowCount - 2) + " players including " + newUserCount + " new players");
 
 //Save the brick data file to S3
-def brickDataBytes = JsonOutput.prettyPrint(JsonOutput.toJson(brickData)).getBytes(encoding);
-def brickDataS3Obj = new StorageObject(brickDataFilename);
-brickDataS3Obj.dataInputStream = new ByteArrayInputStream(brickDataBytes);
+def brickDataStr = JsonOutput.prettyPrint(JsonOutput.toJson(brickData));
+def brickDataS3Obj = new S3Object(brickDataFilename, brickDataStr);
 brickDataS3Obj.contentType = "applicaton/json";
 brickDataS3Obj.contentEncoding = encoding;
-brickDataS3Obj.contentLength = brickDataBytes.length;
 s3.putObject(config.S3.bucketName, brickDataS3Obj);
 logger.info("Saved brickData in S3: " + brickDataFilename);
 logger.debug(brickData.toString());
 
 //Save the history file to S3
 if (historyModified) {
-    def historyBytes = JsonOutput.prettyPrint(JsonOutput.toJson(history)).getBytes(encoding);
-    def historyS3Obj = new StorageObject(historyFileName);
-    historyS3Obj.dataInputStream = new ByteArrayInputStream(historyBytes);
+    def historyStr = JsonOutput.prettyPrint(JsonOutput.toJson(history));
+    def historyS3Obj = new StorageObject(historyFileName, historyStr);
     historyS3Obj.contentType = "applicaton/json";
     historyS3Obj.contentEncoding = encoding;
-    historyS3Obj.contentLength = historyBytes.length;
     s3.putObject(config.S3.bucketName, historyS3Obj);
     logger.info("Saved history in S3");
     logger.debug(history.toString());
