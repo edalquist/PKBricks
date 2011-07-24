@@ -1,0 +1,12 @@
+#weekNavigation {
+    overflow: auto;
+    width: 100%
+}
+.navLinkContainer {
+    width: 80px;
+    float: left;
+    text-align: center;
+}
+#thisWeek {
+    font-weight: bold;
+}
