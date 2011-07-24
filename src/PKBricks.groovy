@@ -55,7 +55,7 @@ final def fromS3Obj(s3Obj) {
     }
     
     try {
-        return jsonSlurper.parse(new InputStreamReader(s3Stream, s3Obj.contentEncoding));
+        return jsonSlurper.parse(new InputStreamReader(s3Stream, encoding));
     }
     finally {
         IOUtils.closeQuietly(s3Stream);
