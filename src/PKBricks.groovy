@@ -20,34 +20,67 @@
 @Grab(group='commons-io', module='commons-io', version='2.0.1')
 @Grab(group='net.java.dev.jets3t', module='jets3t', version='0.8.1')
 
-import java.util.concurrent.TimeUnit;
-import org.apache.commons.lang.*;
-import org.apache.commons.io.*;
-import groovy.json.*;
-import groovyx.net.http.HTTPBuilder
-import static groovyx.net.http.Method.GET
-import static groovyx.net.http.ContentType.TEXT
 import static groovyx.net.http.ContentType.HTML
+import static groovyx.net.http.ContentType.TEXT
 import static groovyx.net.http.ContentType.URLENC
+import static groovyx.net.http.Method.GET
+import groovyx.net.http.HTTPBuilder
+import groovy.json.*
+
+import java.util.concurrent.TimeUnit
+import java.util.zip.*
+
+import org.apache.commons.io.*
+import org.apache.commons.lang.*
+import org.apache.log4j.*
 import org.jets3t.service.impl.rest.httpclient.RestS3Service
 import org.jets3t.service.security.AWSCredentials
 import org.jets3t.service.model.*
-import org.apache.log4j.*
+import static Constants.*
 
-final def logger = LogManager.getLogger("PKBricks");
-final def historyFileName = "history.json";
-final def brickStatusDefaultsFileName = "brickStatusDefaults.json";
-final def encoding = "UTF-8";
-final def jsonSlurper = new JsonSlurper();
+class Constants {
+    static final def logger = LogManager.getLogger("PKBricks");
+    static final def historyFileName = "history.json";
+    static final def brickStatusDefaultsFileName = "brickStatusDefaults.json";
+    static final def encoding = "UTF-8";
+    static final def jsonSlurper = new JsonSlurper();
+}
 
-final def s3ToJson(jsonSlurper, s3Obj) {
+final def fromS3Obj(s3Obj) {
     def s3Stream = s3Obj.getDataInputStream();
+    
+    //If GZipped decompress when reading
+    if ("gzip".equals(s3Obj.getContentEncoding())) {
+        s3Stream = new GZIPInputStream(s3Stream);
+    }
+    
     try {
         return jsonSlurper.parse(new InputStreamReader(s3Stream, s3Obj.contentEncoding));
     }
     finally {
         IOUtils.closeQuietly(s3Stream);
     }
+}
+
+final def compress(String dataStr) {
+    def targetStream = new ByteArrayOutputStream()
+    def zipStream = new GZIPOutputStream(targetStream)
+    zipStream.write(dataStr.getBytes(encoding));
+    zipStream.close()
+    return targetStream.toByteArray()
+}
+
+final def toS3Obj(fileName, data) {
+    def dataStr = JsonOutput.prettyPrint(JsonOutput.toJson(data));
+    def dataBytes = compress(dataStr);
+    
+    def s3Obj = new S3Object(fileName);
+    s3Obj.contentType = "applicaton/json";
+    s3Obj.contentEncoding = "gzip";
+    s3Obj.dataInputStream = new ByteArrayInputStream(dataBytes);
+    s3Obj.contentLength = dataBytes.length;
+    
+    return s3Obj;
 }
 
 final def scriptDir = new File(getClass().protectionDomain.codeSource.location.path).parent;
@@ -112,7 +145,7 @@ def historyModified = false;
 final def history;
 if (s3.isObjectInBucket(config.S3.bucketName, historyFileName)) {
     def historyS3Obj = s3.getObject(config.S3.bucketName, historyFileName);
-    history = s3ToJson(jsonSlurper, historyS3Obj);
+    history = fromS3Obj(historyS3Obj);
     logger.info("Loaded history from S3")
 }
 else {
@@ -138,7 +171,7 @@ if (brickDataFilename == null) {
 final def brickData;
 if (s3.isObjectInBucket(config.S3.bucketName, brickDataFilename)) {
     def brickDataS3Obj = s3.getObject(config.S3.bucketName, brickDataFilename);
-    brickData = s3ToJson(jsonSlurper, brickDataS3Obj);
+    brickData = fromS3Obj(brickDataS3Obj);
     logger.info("Loaded brick data from S3 for: " + brickDataFilename);
 }
 else {
@@ -252,20 +285,14 @@ if (!versioningStatus.versioningEnabled) {
 logger.info("Parsed " + (rowCount - 2) + " players including " + newUserCount + " new players");
 
 //Save the brick data file to S3
-def brickDataStr = JsonOutput.prettyPrint(JsonOutput.toJson(brickData));
-def brickDataS3Obj = new S3Object(brickDataFilename, brickDataStr);
-brickDataS3Obj.contentType = "applicaton/json";
-brickDataS3Obj.contentEncoding = encoding;
+def brickDataS3Obj = toS3Obj(brickDataFilename, brickData);
 s3.putObject(config.S3.bucketName, brickDataS3Obj);
 logger.info("Saved brickData in S3: " + brickDataFilename);
 logger.debug(brickData.toString());
 
 //Save the history file to S3
 if (historyModified) {
-    def historyStr = JsonOutput.prettyPrint(JsonOutput.toJson(history));
-    def historyS3Obj = new StorageObject(historyFileName, historyStr);
-    historyS3Obj.contentType = "applicaton/json";
-    historyS3Obj.contentEncoding = encoding;
+    def historyS3Obj = toS3Obj(historyFileName, history);
     s3.putObject(config.S3.bucketName, historyS3Obj);
     logger.info("Saved history in S3");
     logger.debug(history.toString());
