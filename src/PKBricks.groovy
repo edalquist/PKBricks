@@ -86,14 +86,17 @@ final def toS3Obj(fileName, data) {
 final def scriptDir = new File(getClass().protectionDomain.codeSource.location.path).parent;
 final def config = jsonSlurper.parseText(new File(scriptDir, "config.json").getText(encoding));
 
-//Load update status file
-final def statusFile = new File(scriptDir, config.statusFile);
-final def statusData;
-if (statusFile.exists()) {
-    statusData = jsonSlurper.parseText(statusFile.getText(encoding));
-}
-else {
-    statusData = [:];
+//Load update status file if it is specified
+def statusFile;
+def statusData;
+if (config.statusFile != null) {
+    statusFile = new File(scriptDir, config.statusFile);
+    if (statusFile.exists()) {
+        statusData = jsonSlurper.parseText(statusFile.getText(encoding));
+    }
+    else {
+        statusData = [:];
+    }
 }
 
 def cli = new CliBuilder(usage: 'PKBricks.groovy -[f]')
@@ -113,7 +116,7 @@ if (!options || options.h) {
 if (options.f) {
     logger.info("Forced Update");
 }
-else if (statusData.lastUpdated != null) {
+else if (config.updateInterval != null && statusData != null && statusData.lastUpdated != null) {
     def updateInterval = TimeUnit.MINUTES.toMillis(config.updateInterval);
     def now = System.currentTimeMillis();
     if ((statusData.lastUpdated + updateInterval) >= now) {
@@ -299,5 +302,7 @@ if (historyModified) {
 }    
 
 //Save the status file
-statusData.lastUpdated = System.currentTimeMillis();
-statusFile.write(JsonOutput.prettyPrint(JsonOutput.toJson(statusData)), encoding);
+if (statusFile != null) {
+    statusData.lastUpdated = System.currentTimeMillis();
+    statusFile.write(JsonOutput.prettyPrint(JsonOutput.toJson(statusData)), encoding);
+}
