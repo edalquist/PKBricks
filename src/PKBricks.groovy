@@ -25,6 +25,7 @@ import static groovyx.net.http.ContentType.TEXT
 import static groovyx.net.http.ContentType.URLENC
 import static groovyx.net.http.Method.GET
 import groovyx.net.http.HTTPBuilder
+import groovyx.net.http.EncoderRegistry
 import groovy.json.*
 
 import java.util.concurrent.TimeUnit
@@ -202,9 +203,12 @@ brickData.lastUpdated = System.currentTimeMillis();
 
 def http = new HTTPBuilder('http://www.parallelkingdom.com');
 http.headers.'User-Agent' = 'Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; Trident/4.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)';
+
+//added setEncoderRegistry to be able to handle special characters in login name or password.
+http.setEncoderRegistry(new EncoderRegistry( charset: 'utf-8' ));
  
 //Get KD Profile Page
-def kdProfile = http.get(path : '/Kingdom.aspx', query : [kingdomid:'232']);
+def kdProfile = http.get(path : '/Kingdom.aspx', query : [kingdomid:config.PK.kingdomid]);
 
 //Find the login link
 def loginLink = kdProfile.depthFirst().grep({ it.@id == 'LoginLink' })['@href'][0];
@@ -228,7 +232,7 @@ loginPostBody['ctl00$MainContent$Password']=config.PK.password;
 http.post(path: '/' + loginPath, body: loginPostBody, requestContentType: URLENC );
 
 //Get the KD Profile page again
-kdProfile = http.get(path : '/Kingdom.aspx', query : [kingdomid:'232']);
+kdProfile = http.get(path : '/Kingdom.aspx', query : [kingdomid:config.PK.kingdomid]);
 
 //Find the member table
 def memberTable = kdProfile.depthFirst().grep({ "table".equalsIgnoreCase(it.name()) && it.@id == "MainContent_KingdomBody_memberListTable"})[0];

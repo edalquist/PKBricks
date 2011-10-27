@@ -3,7 +3,8 @@
     "updateInterval": 23,
     "PK": {
         "username": "",
-        "password": ""
+        "password": "",
+        "kingdomid": ""
     },
     "S3": {
         "accessKey": "",
